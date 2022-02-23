@@ -1,9 +1,10 @@
 import argparse
-import httplib
+import http.client
 import sys
 import re
 import itertools
 import json
+import random
 
 import requests
 from reportlab.pdfgen import canvas
@@ -17,20 +18,28 @@ bgg = BoardGameGeek()
 
 def iter_batches(iterable, size):
     sourceiter = iter(iterable)
-    while True:
-        batchiter = itertools.islice(sourceiter, size)
-        yield itertools.chain([batchiter.next()], batchiter)
+    try:
+        while True:
+            batchiter = itertools.islice(sourceiter, size)
+            yield itertools.chain([next(batchiter)], batchiter)
+    except StopIteration:
+        return
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("tradeid", type=int)
+    parser.add_argument("--no-labels", action="store_true")
+    parser.add_argument("--random-traders", type=int, default=0)
     args = parser.parse_args()
+    url = f"http://bgg.activityclub.org/olwlg/{args.tradeid}-results-official.txt"
+    print(f"trade results url: {url}")
     resp = requests.get(
-        "http://bgg.activityclub.org/olwlg/{}-results-official.txt".format(args.tradeid)
+        url,
+        verify=False,
     )
-    if resp.status_code != httplib.OK:
-        print("could not access official results for {}".format(args.tradeid))
+    if resp.status_code != http.client.OK:
+        print(f"could not access official results for {args.tradeid}: {resp.status_code}")
         sys.exit(1)
     results = resp.text
 
@@ -38,7 +47,7 @@ if __name__ == "__main__":
     try:
         with open(cache_fname) as f:
             cache = json.load(f)
-    except:
+    except FileNotFoundError:
         cache = {}
     traders = set()
     for line in results.split("\n"):
@@ -46,17 +55,21 @@ if __name__ == "__main__":
         if m:
             traders.add(m.group(1))
             traders.add(m.group(2))
+    if args.random_traders > 0:
+        print(f"randomly selected traders: {random.sample(traders, args.random_traders)}")
+    if args.no_labels:
+        sys.exit(0)
     traders = sorted(traders)
     for t in traders:
         if t not in cache:
             u = bgg.user(t)
             if not u:
-                cache[t] = u"NOT FOUND"
+                cache[t] = "NOT FOUND"
             else:
-                print(t, u.firstname, u.lastname)
-                n = u"{} {}".format(u.firstname, u.lastname)
+                print((t, u.firstname, u.lastname))
+                n = "{} {}".format(u.firstname, u.lastname)
                 cache[t] = n
-            with open(cache_fname, 'w') as f:
+            with open(cache_fname, "w") as f:
                 json.dump(cache, f)
     traders = [(t, cache[t]) for t in traders]
     print("\n".join([str(t) for t in traders]))
