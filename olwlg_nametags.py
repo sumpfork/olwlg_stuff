@@ -74,12 +74,13 @@ if __name__ == "__main__":
         if t not in cache:
             u = bgg.user(t)
             if u:
-                print((t, u.firstname, u.lastname))
+                print(f"retrieved info for {t}: {u.firstname} {u.lastname}")
                 n = "{} {}".format(u.firstname, u.lastname)
                 cache[t] = n
             else:
                 print(f"Warning: user {t} not found on BGG")
             with open(cache_fname, "w") as f:
+                print(f"writing cache to {cache_fname}, {len(cache)} traders")
                 json.dump(cache, f)
     traders = [(t, cache[t]) for t in traders]
     print(f"{len(traders)} Traders found")
@@ -87,14 +88,14 @@ if __name__ == "__main__":
     cutoffs = (len(traders) // 3, len(traders) * 2 // 3, len(traders))
     print(f"cuttoffs: {cutoffs}")
     for i in (0, 1):
+        # find breaks at first letter changes
         while traders[cutoffs[i]][0][0] == traders[cutoffs[i] - 1][0][0]:
-            print(f"{traders[cutoffs[i]]}, {traders[cutoffs[i] - 1]}")
             cutoffs = (
                 cutoffs[0] + (1 if i == 0 else 0),
                 cutoffs[1] + (1 if i == 1 else 0),
                 cutoffs[2],
             )
-    print(f"adjusted cuttoffs: {cutoffs}")
+    print(f"adjusted cuttoffs at first letter changes: {cutoffs}")
 
     # print("\n".join([str(t) for t in traders]))
     c = canvas.Canvas("traders_{}.pdf".format(args.tradeid), pagesize=LETTER)
