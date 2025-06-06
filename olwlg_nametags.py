@@ -1,17 +1,16 @@
 import argparse
 import http.client
-import sys
-import re
 import itertools
 import json
 import random
+import re
+import sys
 
 import requests
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
-from reportlab.lib.pagesizes import LETTER
-
 from boardgamegeek import BoardGameGeek
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 
 bgg = BoardGameGeek()
 
@@ -53,24 +52,24 @@ if __name__ == "__main__":
             cache = json.load(f)
     except FileNotFoundError:
         cache = {}
-    traders = set()
+    traders_set = set()
     preamble = []
     for line in results.split("\n"):
         m = re.match(r"\((.*?)\).*receives \((.*?)\).*", line)
         if m:
-            traders.add(m.group(1))
-            traders.add(m.group(2))
+            traders_set.add(m.group(1))
+            traders_set.add(m.group(2))
         else:
             m = re.match(r"#\+ (.*)", line)
             if m:
                 preamble.append(m.group(1))
     if args.random_traders > 0:
         print(
-            f"randomly selected traders: {random.sample(traders, args.random_traders)}"
+            f"randomly selected traders: {random.sample(list(traders_set), args.random_traders)}"
         )
     if args.no_labels:
         sys.exit(0)
-    traders = sorted(traders)
+    traders = sorted(traders_set)
     for t in traders:
         if t not in cache:
             u = bgg.user(t)
@@ -133,12 +132,12 @@ if __name__ == "__main__":
         c.translate(LETTER[0] / 2, LETTER[1] / 2)
         c.setFont("Helvetica", 12)
         y = 200
-        for n, line in enumerate(preamble):
-            c.drawCentredString(0, y - n * 20, line)
+        for line_num, line in enumerate(preamble):
+            c.drawCentredString(0, y - line_num * 20, line)
         c.drawCentredString(
-            0, y - (n + 3) * 20, "Traders with usernames starting with letters:"
+            0, y - (line_num + 3) * 20, "Traders with usernames starting with letters:"
         )
-        c.drawCentredString(0, y - n * 20, line)
+        c.drawCentredString(0, y - line_num * 20, line)
         c.setFont("Helvetica", 45)
         c.drawCentredString(0, 0, f"{traders[i][0][0]}-{traders[cutoff - 1][0][0]}")
         c.restoreState()
@@ -175,7 +174,7 @@ if __name__ == "__main__":
 
                     c.drawCentredString(
                         0,  # 25 if on_left else -25,
-                        -label_width -4 if on_left else -7,
+                        -label_width - 4 if on_left else -7,
                         uname,
                     )
                     c.restoreState()
