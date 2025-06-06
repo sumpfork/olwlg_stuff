@@ -31,6 +31,8 @@ if __name__ == "__main__":
     parser.add_argument("tradeid", type=int)
     parser.add_argument("--no-labels", action="store_true")
     parser.add_argument("--random-traders", type=int, default=0)
+    parser.add_argument("--print-namelists", action="store_true")
+
     args = parser.parse_args()
     url = f"http://bgg.activityclub.org/olwlg/{args.tradeid}-results-official.txt"
     print(f"trade results url: {url}")
@@ -52,11 +54,16 @@ if __name__ == "__main__":
     except FileNotFoundError:
         cache = {}
     traders = set()
+    preamble = []
     for line in results.split("\n"):
         m = re.match(r"\((.*?)\).*receives \((.*?)\).*", line)
         if m:
             traders.add(m.group(1))
             traders.add(m.group(2))
+        else:
+            m = re.match(r"#\+ (.*)", line)
+            if m:
+                preamble.append(m.group(1))
     if args.random_traders > 0:
         print(
             f"randomly selected traders: {random.sample(traders, args.random_traders)}"
@@ -93,25 +100,26 @@ if __name__ == "__main__":
     # print("\n".join([str(t) for t in traders]))
     c = canvas.Canvas("traders_{}.pdf".format(args.tradeid), pagesize=LETTER)
 
-    # first print some name lists
-    i = 0
-    for ci, cutoff in enumerate(cutoffs):
-        c.saveState()
-        c.translate(LETTER[0] / 2, LETTER[1] - 50)
-        c.setFont("Helvetica", 25)
-        c.drawCentredString(0, 0, f"{traders[i][0][0]}-{traders[cutoff - 1][0][0]}")
-        c.translate(0, -40)
-        while i < cutoff:
-            c.translate(0, -18)
-            c.rect(-130, 0, 10, 10, fill=0)
-            c.setFont("Helvetica", 12)
-            c.drawString(
-                -100,
-                0,
-                " ".join(traders[i]),
-            )
-            i += 1
-        c.showPage()
+    if args.print_namelists:
+        # first print some name lists
+        i = 0
+        for ci, cutoff in enumerate(cutoffs):
+            c.saveState()
+            c.translate(LETTER[0] / 2, LETTER[1] - 50)
+            c.setFont("Helvetica", 25)
+            c.drawCentredString(0, 0, f"{traders[i][0][0]}-{traders[cutoff - 1][0][0]}")
+            c.translate(0, -40)
+            while i < cutoff:
+                c.translate(0, -18)
+                c.rect(-130, 0, 10, 10, fill=0)
+                c.setFont("Helvetica", 12)
+                c.drawString(
+                    -100,
+                    0,
+                    " ".join(traders[i]),
+                )
+                i += 1
+            c.showPage()
 
     LABELS_PER_PAGE = 10
     LABELS_PER_ROW = 2
@@ -121,7 +129,23 @@ if __name__ == "__main__":
     label_height = 2 * inch  # 1 * inch
     i = 0
     for cutoff in cutoffs:
+        c.saveState()
+        c.translate(LETTER[0] / 2, LETTER[1] / 2)
+        c.setFont("Helvetica", 12)
+        y = 200
+        for n, line in enumerate(preamble):
+            c.drawCentredString(0, y - n * 20, line)
+        c.drawCentredString(
+            0, y - (n + 3) * 20, "Traders with usernames starting with letters:"
+        )
+        c.drawCentredString(0, y - n * 20, line)
+        c.setFont("Helvetica", 45)
+        c.drawCentredString(0, 0, f"{traders[i][0][0]}-{traders[cutoff - 1][0][0]}")
+        c.restoreState()
+        c.showPage()
+
         for page_labels in iter_batches(traders[i:cutoff], LABELS_PER_PAGE):
+            c.line(LETTER[0] / 2, LETTER[1] - top_margin, LETTER[0] / 2, top_margin)
             page_labels = list(page_labels)
             c.setFont("Helvetica", 20)
             c.drawCentredString(
@@ -138,11 +162,23 @@ if __name__ == "__main__":
             for labels in iter_batches(page_labels, LABELS_PER_ROW):
                 c.saveState()
                 c.translate(left_margin, 0)
-                for uname, name in labels:
+                for ri, (uname, name) in enumerate(labels):
                     c.setFont("Helvetica", 25)
                     c.drawCentredString((label_width / 2), label_height / 5, uname[:16])
                     c.setFont("Helvetica", 20)
                     c.drawCentredString((label_width / 2), -label_height / 5, name[:25])
+
+                    c.setFont("Helvetica", 6)
+                    c.saveState()
+                    on_left = ri % LABELS_PER_ROW == 0
+                    c.rotate(90 if on_left else -90)
+
+                    c.drawCentredString(
+                        0,  # 25 if on_left else -25,
+                        -label_width -4 if on_left else -7,
+                        uname,
+                    )
+                    c.restoreState()
                     c.translate(label_width + left_margin, 0)
                     i += 1
                 c.restoreState()
