@@ -12,3 +12,5 @@ dependencies = [
 ]
 [dependency-groups]
 dev = ["types-requests", "types-reportlab"]
+[project.scripts]
+olwlg-nametags = "olwlg_nametags.olwlg_nametags:main"
