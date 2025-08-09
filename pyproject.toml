@@ -1,0 +1,14 @@
+[project]
+name = "olwlg-nametags"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "boardgamegeek>=0.13.2",
+    "reportlab>=4.2.5",
+    "requests>=2.32.3",
+    "requests-cache<0.6",
+]
+[dependency-groups]
+dev = ["types-requests", "types-reportlab"]
