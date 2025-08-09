@@ -126,21 +126,28 @@ class NametagGenerator:
         self.filename = f"traders_{trade_id}.pdf"
         self.canvas = canvas.Canvas(self.filename, pagesize=LETTER)
 
-    def _calculate_cutoffs(self, traders: List[Tuple[str, str]]) -> Tuple[int, int, int]:
-        """Calculate cutoff points for dividing traders into three groups."""
+    def _calculate_cutoffs(self, traders: List[Tuple[str, str]], num_groups: int = 3) -> List[int]:
+        """Calculate cutoff points for dividing traders into specified number of groups."""
         total = len(traders)
-        cutoffs = [total // 3, total * 2 // 3, total]
+        cutoffs = []
 
-        # Adjust cutoffs to align with first letter changes
-        for i in range(2):  # Only adjust first two cutoffs
+        # Calculate initial cutoff points
+        for i in range(1, num_groups + 1):
+            cutoffs.append(total * i // num_groups)
+
+        # Set the last cutoff to total to ensure we include all traders
+        cutoffs[-1] = total
+
+        # Adjust cutoffs to align with first letter changes (except the last one)
+        for i in range(num_groups - 1):  # Don't adjust the last cutoff
             while (cutoffs[i] < total
                    and cutoffs[i] > 0
                    and traders[cutoffs[i]][0][0] == traders[cutoffs[i] - 1][0][0]):
                 cutoffs[i] += 1
 
-        return (cutoffs[0], cutoffs[1], cutoffs[2])
+        return cutoffs
 
-    def generate_name_lists(self, traders: List[Tuple[str, str]], cutoffs: Tuple[int, int, int]) -> None:
+    def generate_name_lists(self, traders: List[Tuple[str, str]], cutoffs: List[int]) -> None:
         """Generate checklist pages for each group of traders."""
         start_index = 0
 
@@ -216,10 +223,10 @@ class NametagGenerator:
         self.canvas.drawCentredString(0, x_offset, username)
         self.canvas.restoreState()
 
-    def generate_nametags(self, traders: List[Tuple[str, str]], preamble: List[str]) -> None:
+    def generate_nametags(self, traders: List[Tuple[str, str]], preamble: List[str], num_groups: int = 3) -> None:
         """Generate nametag pages for all traders."""
-        cutoffs = self._calculate_cutoffs(traders)
-        print(f"Cutoffs: {cutoffs}")
+        cutoffs = self._calculate_cutoffs(traders, num_groups)
+        print(f"Cutoffs for {num_groups} groups: {cutoffs}")
         print(f"Adjusted cutoffs at first letter changes: {cutoffs}")
 
         start_index = 0
@@ -295,8 +302,15 @@ def main() -> None:
                         help="Show N random traders for testing")
     parser.add_argument("--print-namelists", action="store_true",
                         help="Include checklist pages in output")
+    parser.add_argument("--groups", type=int, default=3,
+                        help="Number of groups to divide traders into (default: 3)")
 
     args = parser.parse_args()
+
+    # Validate groups argument
+    if args.groups < 1:
+        print("Error: Number of groups must be at least 1")
+        sys.exit(1)
 
     # Initialize processors
     results_processor = TradeResultsProcessor(args.tradeid)
@@ -323,11 +337,11 @@ def main() -> None:
 
     # Generate name lists if requested
     if args.print_namelists:
-        cutoffs = generator._calculate_cutoffs(trader_info)
+        cutoffs = generator._calculate_cutoffs(trader_info, args.groups)
         generator.generate_name_lists(trader_info, cutoffs)
 
     # Generate nametags
-    generator.generate_nametags(trader_info, preamble)
+    generator.generate_nametags(trader_info, preamble, args.groups)
     generator.save()
 
 
