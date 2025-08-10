@@ -8,6 +8,7 @@ import argparse
 import http.client
 import itertools
 import json
+import os
 import random
 import re
 import sys
@@ -18,6 +19,8 @@ from boardgamegeek import BoardGameGeek  # type: ignore
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 
 # Configuration Constants
@@ -27,6 +30,7 @@ TOP_MARGIN = 0.5 * inch
 LEFT_MARGIN = 0.18 * inch
 LABEL_WIDTH = 4 * inch
 LABEL_HEIGHT = 2 * inch
+MIDDLE_FUDGE = 0.04 * inch
 
 # Font sizes
 TITLE_FONT_SIZE = 45
@@ -72,7 +76,9 @@ class TradeResultsProcessor:
 
         response = requests.get(url, verify=False)
         if response.status_code != http.client.OK:
-            print(f"Could not access official results for {self.trade_id}: {response.status_code}")
+            print(
+                f"Could not access official results for {self.trade_id}: {response.status_code}"
+            )
             sys.exit(1)
 
         return response.text
@@ -104,7 +110,9 @@ class TradeResultsProcessor:
             if trader not in self.cache:
                 user = self.bgg.user(trader)
                 if user:
-                    print(f"Retrieved info for {trader}: {user.firstname} {user.lastname}")
+                    print(
+                        f"Retrieved info for {trader}: {user.firstname} {user.lastname}"
+                    )
                     real_name = f"{user.firstname} {user.lastname}"
                     self.cache[trader] = real_name
                 else:
@@ -125,8 +133,43 @@ class NametagGenerator:
         self.trade_id = trade_id
         self.filename = f"traders_{trade_id}.pdf"
         self.canvas = canvas.Canvas(self.filename, pagesize=LETTER)
+        self.letter_range_font = self._register_letter_range_font()
 
-    def _calculate_cutoffs(self, traders: List[Tuple[str, str]], num_groups: int = 3) -> List[int]:
+    def _register_letter_range_font(self) -> str:
+        """Register Menlo-Regular font for letter ranges, fallback to Helvetica."""
+        # Common paths for Menlo-Regular.ttf on macOS
+        font_paths = [
+            "/System/Library/Fonts/Menlo.ttc",  # macOS system font (TTC format)
+            "/Library/Fonts/Menlo-Regular.ttf",  # Alternative location
+            "Menlo-Regular.ttf",  # Current directory
+            "/System/Library/Fonts/Supplemental/Menlo-Regular.ttf",  # Another macOS location
+        ]
+
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    # Register the font with ReportLab
+                    if font_path.endswith(".ttc"):
+                        # Handle TTC (TrueType Collection) files
+                        pdfmetrics.registerFont(
+                            TTFont("Menlo-Regular", font_path, subfontIndex=0)
+                        )
+                    else:
+                        pdfmetrics.registerFont(TTFont("Menlo-Regular", font_path))
+                    print(
+                        f"Successfully registered Menlo-Regular font from: {font_path}"
+                    )
+                    return "Menlo-Regular"
+                except Exception as e:
+                    print(f"Failed to register font from {font_path}: {e}")
+                    continue
+
+        print("Menlo-Regular font not found, falling back to Helvetica")
+        return "Helvetica"
+
+    def _calculate_cutoffs(
+        self, traders: List[Tuple[str, str]], num_groups: int = 3
+    ) -> List[int]:
         """Calculate cutoff points for dividing traders into specified number of groups."""
         total = len(traders)
         cutoffs = []
@@ -140,14 +183,18 @@ class NametagGenerator:
 
         # Adjust cutoffs to align with first letter changes (except the last one)
         for i in range(num_groups - 1):  # Don't adjust the last cutoff
-            while (cutoffs[i] < total
-                   and cutoffs[i] > 0
-                   and traders[cutoffs[i]][0][0] == traders[cutoffs[i] - 1][0][0]):
+            while (
+                cutoffs[i] < total
+                and cutoffs[i] > 0
+                and traders[cutoffs[i]][0][0] == traders[cutoffs[i] - 1][0][0]
+            ):
                 cutoffs[i] += 1
 
         return cutoffs
 
-    def generate_name_lists(self, traders: List[Tuple[str, str]], cutoffs: List[int]) -> None:
+    def generate_name_lists(
+        self, traders: List[Tuple[str, str]], cutoffs: List[int]
+    ) -> None:
         """Generate checklist pages for each group of traders."""
         start_index = 0
 
@@ -156,7 +203,7 @@ class NametagGenerator:
             self.canvas.translate(LETTER[0] / 2, LETTER[1] - 50)
 
             # Group header
-            self.canvas.setFont("Helvetica", HEADER_FONT_SIZE)
+            self.canvas.setFont(self.letter_range_font, HEADER_FONT_SIZE)
             first_letter = traders[start_index][0][0]
             last_letter = traders[cutoff - 1][0][0]
             self.canvas.drawCentredString(0, 0, f"{first_letter}-{last_letter}")
@@ -174,8 +221,13 @@ class NametagGenerator:
             self.canvas.showPage()
             start_index = cutoff
 
-    def _draw_section_cover(self, traders: List[Tuple[str, str]], start_idx: int,
-                            end_idx: int, preamble: List[str]) -> None:
+    def _draw_section_cover(
+        self,
+        traders: List[Tuple[str, str]],
+        start_idx: int,
+        end_idx: int,
+        preamble: List[str],
+    ) -> None:
         """Draw a cover page for a section of traders."""
         self.canvas.saveState()
         self.canvas.translate(LETTER[0] / 2, LETTER[1] / 2)
@@ -188,10 +240,12 @@ class NametagGenerator:
 
         # Section description
         final_y = y_position - (len(preamble) + 2) * 20
-        self.canvas.drawCentredString(0, final_y, "Traders with usernames starting with letters:")
+        self.canvas.drawCentredString(
+            0, final_y, "Traders with usernames starting with letters:"
+        )
 
         # Large letter range
-        self.canvas.setFont("Helvetica", TITLE_FONT_SIZE)
+        self.canvas.setFont(self.letter_range_font, TITLE_FONT_SIZE)
         first_letter = traders[start_idx][0][0]
         last_letter = traders[end_idx - 1][0][0]
         self.canvas.drawCentredString(0, 0, f"{first_letter}-{last_letter}")
@@ -199,17 +253,23 @@ class NametagGenerator:
         self.canvas.restoreState()
         self.canvas.showPage()
 
-    def _draw_nametag(self, username: str, real_name: str, position_in_row: int) -> None:
+    def _draw_nametag(
+        self, username: str, real_name: str, position_in_row: int
+    ) -> None:
         """Draw a single nametag."""
         # Main name (username)
         self.canvas.setFont("Helvetica", NAME_FONT_SIZE)
         truncated_username = username[:USERNAME_MAX_LENGTH]
-        self.canvas.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 5, truncated_username)
+        self.canvas.drawCentredString(
+            LABEL_WIDTH / 2, LABEL_HEIGHT / 5, truncated_username
+        )
 
         # Real name
         self.canvas.setFont("Helvetica", REAL_NAME_FONT_SIZE)
         truncated_real_name = real_name[:REAL_NAME_MAX_LENGTH]
-        self.canvas.drawCentredString(LABEL_WIDTH / 2, -LABEL_HEIGHT / 5, truncated_real_name)
+        self.canvas.drawCentredString(
+            LABEL_WIDTH / 2, -LABEL_HEIGHT / 5, truncated_real_name
+        )
 
         # Side text (rotated username)
         self.canvas.setFont("Helvetica", SIDE_FONT_SIZE)
@@ -217,42 +277,59 @@ class NametagGenerator:
 
         is_left_label = position_in_row % LABELS_PER_ROW == 0
         rotation = 90 if is_left_label else -90
-        x_offset = -LABEL_WIDTH - 4 if is_left_label else -7
+        x_offset = -LABEL_WIDTH - 4 + MIDDLE_FUDGE if is_left_label else -7 - MIDDLE_FUDGE
 
         self.canvas.rotate(rotation)
         self.canvas.drawCentredString(0, x_offset, username)
         self.canvas.restoreState()
 
-    def generate_nametags(self, traders: List[Tuple[str, str]], preamble: List[str], num_groups: int = 3) -> None:
-        """Generate nametag pages for all traders."""
+    def generate_section_covers(
+        self, traders: List[Tuple[str, str]], preamble: List[str], num_groups: int = 3
+    ) -> None:
+        """Generate section cover pages for all groups."""
         cutoffs = self._calculate_cutoffs(traders, num_groups)
+        print(f"Generating {num_groups} section cover pages")
         print(f"Cutoffs for {num_groups} groups: {cutoffs}")
-        print(f"Adjusted cutoffs at first letter changes: {cutoffs}")
 
         start_index = 0
 
         for cutoff in cutoffs:
             # Draw section cover page
             self._draw_section_cover(traders, start_index, cutoff, preamble)
+            start_index = cutoff
 
+    def generate_nametags(
+        self, traders: List[Tuple[str, str]], num_groups: int = 3
+    ) -> None:
+        """Generate nametag pages for all traders."""
+        cutoffs = self._calculate_cutoffs(traders, num_groups)
+        print(f"Generating nametag pages for {num_groups} groups")
+        print(f"Adjusted cutoffs at first letter changes: {cutoffs}")
+
+        start_index = 0
+
+        for cutoff in cutoffs:
             # Generate nametag pages for this section
             section_traders = traders[start_index:cutoff]
 
             for page_traders in iter_batches(section_traders, LABELS_PER_PAGE):
                 page_traders = list(page_traders)
 
-                # Draw page divider line and range indicators
-                self.canvas.line(LETTER[0] / 2, LETTER[1] - TOP_MARGIN,
-                                 LETTER[0] / 2, TOP_MARGIN)
+                middle = LETTER[0] / 2 - MIDDLE_FUDGE
 
-                self.canvas.setFont("Helvetica", RANGE_FONT_SIZE)
+                # Draw page divider line and range indicators
+                self.canvas.line(
+                    middle, LETTER[1] - TOP_MARGIN, middle, TOP_MARGIN
+                )
+
+                self.canvas.setFont(self.letter_range_font, RANGE_FONT_SIZE)
                 first_letter = page_traders[0][0][0]
                 last_letter = page_traders[-1][0][0]
                 range_text = f"{first_letter}-{last_letter}"
 
                 # Top and bottom range indicators
-                self.canvas.drawCentredString(LETTER[0] / 2 - 50, 10, range_text)
-                self.canvas.drawCentredString(LETTER[0] / 2 - 50, LETTER[1] - 25, range_text)
+                self.canvas.drawCentredString(middle, 15, range_text)
+                self.canvas.drawCentredString(middle, LETTER[1] - 25, range_text)
 
                 # Position for first row of labels
                 self.canvas.translate(0, LETTER[1] - TOP_MARGIN - LABEL_HEIGHT / 2)
@@ -296,14 +373,28 @@ def main() -> None:
         description="Generate PDF nametags for OLWLG trade participants"
     )
     parser.add_argument("tradeid", type=int, help="Trade ID number")
-    parser.add_argument("--no-labels", action="store_true",
-                        help="Only process data, don't generate labels")
-    parser.add_argument("--random-traders", type=int, default=0,
-                        help="Show N random traders for testing")
-    parser.add_argument("--print-namelists", action="store_true",
-                        help="Include checklist pages in output")
-    parser.add_argument("--groups", type=int, default=3,
-                        help="Number of groups to divide traders into (default: 3)")
+    parser.add_argument(
+        "--no-labels",
+        action="store_true",
+        help="Only process data, don't generate labels",
+    )
+    parser.add_argument(
+        "--random-traders",
+        type=int,
+        default=0,
+        help="Show N random traders for testing",
+    )
+    parser.add_argument(
+        "--print-namelists",
+        action="store_true",
+        help="Include checklist pages in output",
+    )
+    parser.add_argument(
+        "--groups",
+        type=int,
+        default=3,
+        help="Number of groups to divide traders into (default: 3)",
+    )
 
     args = parser.parse_args()
 
@@ -340,8 +431,9 @@ def main() -> None:
         cutoffs = generator._calculate_cutoffs(trader_info, args.groups)
         generator.generate_name_lists(trader_info, cutoffs)
 
-    # Generate nametags
-    generator.generate_nametags(trader_info, preamble, args.groups)
+    # Generate section covers first, then nametags
+    generator.generate_section_covers(trader_info, preamble, args.groups)
+    generator.generate_nametags(trader_info, args.groups)
     generator.save()
 
 
