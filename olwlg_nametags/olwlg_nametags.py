@@ -15,7 +15,7 @@ import sys
 from typing import Iterator, List, Tuple, Dict, Any
 
 import requests
-from boardgamegeek import BoardGameGeek  # type: ignore
+from boardgamegeek import BGGClient
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
@@ -49,9 +49,9 @@ REAL_NAME_MAX_LENGTH = 25
 class TradeResultsProcessor:
     """Handles fetching and parsing trade results from OLWLG."""
 
-    def __init__(self, trade_id: int):
+    def __init__(self, trade_id: int, bgg_access_token: str):
         self.trade_id = trade_id
-        self.bgg = BoardGameGeek()
+        self.bgg = BGGClient(access_token=bgg_access_token)
         self.cache_filename = f"bgg_trade_cache_{trade_id}.json"
         self.cache: Dict[str, str] = self._load_cache()
 
@@ -373,6 +373,7 @@ def main() -> None:
         description="Generate PDF nametags for OLWLG trade participants"
     )
     parser.add_argument("tradeid", type=int, help="Trade ID number")
+    parser.add_argument("bgg_access_token", type=str, help="BGG access token")
     parser.add_argument(
         "--no-labels",
         action="store_true",
@@ -404,7 +405,7 @@ def main() -> None:
         sys.exit(1)
 
     # Initialize processors
-    results_processor = TradeResultsProcessor(args.tradeid)
+    results_processor = TradeResultsProcessor(args.tradeid, args.bgg_access_token)
 
     # Fetch and parse trade results
     results_text = results_processor.fetch_results()
